@@ -220,13 +220,12 @@ function setPlayerSourceFromFile(file) {
   }
 
   const nextUrl = URL.createObjectURL(file);
-  const parsedUrl = new URL(nextUrl, window.location.href);
-  if (parsedUrl.protocol !== 'blob:') {
+  if (!nextUrl.startsWith('blob:')) {
     URL.revokeObjectURL(nextUrl);
     throw new Error('Se bloqueó una URL de audio inválida.');
   }
 
-  player.src = parsedUrl.toString();
+  player.src = nextUrl;
   return nextUrl;
 }
 
