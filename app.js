@@ -280,7 +280,7 @@ audioInput.addEventListener('change', async (event) => {
     const stereoWarning = sourceChannels > 1 ? ' Audio estéreo detectado; se usa solo canal 0.' : '';
     const sampleRateHint =
       sampleRate === 96000
-        ? ' Archivo 96 kHz detectado; debería decodificar correctamente. Si notas artefactos, prueba re-muestrear a 44.1 kHz PCM 16-bit.'
+        ? ' Archivo 96 kHz detectado; debería decodificar correctamente. Si notas artefactos, prueba remuestrear a 44.1 kHz PCM 16-bit.'
         : sampleRate !== 44100
           ? ' Se recomienda 44.1 kHz PCM 16-bit para mayor compatibilidad, aunque se admiten otros sample rates.'
           : '';
