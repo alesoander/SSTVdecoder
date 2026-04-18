@@ -55,6 +55,10 @@ function setStatus(message) {
   statusText.textContent = message;
 }
 
+function getChannelText() {
+  return `${sourceChannels} canal${sourceChannels === 1 ? '' : 'es'}`;
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -273,7 +277,6 @@ audioInput.addEventListener('change', async (event) => {
 
   try {
     await decodeAudioFile(file);
-    const channelText = `${sourceChannels} canal${sourceChannels === 1 ? '' : 'es'}`;
     const stereoWarning = sourceChannels > 1 ? ' Audio estéreo detectado; se usa solo canal 0.' : '';
     const sampleRateHint =
       sampleRate === 96000
@@ -282,7 +285,7 @@ audioInput.addEventListener('change', async (event) => {
           ? ' Se recomienda 44.1 kHz PCM 16-bit para mayor compatibilidad, aunque se admiten otros sample rates.'
           : '';
     setStatus(
-      `Audio cargado (${sampleRate} Hz, ${channelText}, sync=${syncStartSec.toFixed(3)} s). Pulsa Escuchar para iniciar la decodificación.${sampleRateHint}${stereoWarning}`,
+      `Audio cargado (${sampleRate} Hz, ${getChannelText()}, sync=${syncStartSec.toFixed(3)} s). Pulsa Escuchar para iniciar la decodificación.${sampleRateHint}${stereoWarning}`,
     );
     listenButton.disabled = false;
   } catch (error) {
@@ -299,8 +302,7 @@ listenButton.addEventListener('click', async () => {
   cancelAnimationFrame(rafId);
   player.currentTime = 0;
   resetDecoderState();
-  const channelText = `${sourceChannels} canal${sourceChannels === 1 ? '' : 'es'}`;
-  setStatus(`Reproduciendo y decodificando imagen pixel a pixel... (${sampleRate} Hz, ${channelText}, sync=${syncStartSec.toFixed(3)} s)`);
+  setStatus(`Reproduciendo y decodificando imagen pixel a pixel... (${sampleRate} Hz, ${getChannelText()}, sync=${syncStartSec.toFixed(3)} s)`);
 
   try {
     await player.play();
