@@ -1,4 +1,5 @@
 const audioInput = document.getElementById('audioInput');
+const modeSelect = document.getElementById('modeSelect');
 const listenButton = document.getElementById('listenButton');
 const downloadButton = document.getElementById('downloadButton');
 const player = document.getElementById('player');
@@ -10,13 +11,27 @@ const ctx = canvas.getContext('2d');
 
 const WIDTH = 320;
 const HEIGHT = 256;
-const MARTIN_M1 = {
-  lineMs: 446.446,
-  syncMs: 4.862,
-  porchMs: 0.572,
-  colorMs: 146.432,
-  separatorMs: 0.572,
+const SSTV_MODES = {
+  'martin-m1': {
+    label: 'Martin M1',
+    lineMs: 446.446,
+    syncMs: 4.862,
+    porchMs: 0.572,
+    colorMs: 146.432,
+    separatorMs: 0.572,
+    componentOrder: ['g', 'b', 'r'],
+  },
+  scottie1: {
+    label: 'Scottie1',
+    lineMs: 428.22,
+    syncMs: 9,
+    porchMs: 1.5,
+    colorMs: 138.24,
+    separatorMs: 1.5,
+    componentOrder: ['g', 'b', 'r'],
+  },
 };
+const DEFAULT_MODE = 'martin-m1';
 const TONE_MIN_HZ = 1500;
 const TONE_MAX_HZ = 2300;
 const TONE_COARSE_STEP_HZ = 20;
@@ -39,6 +54,8 @@ let syncStartSec = 0;
 let rafId = 0;
 let decodeStartPerfMs = 0;
 let hasLoggedTimingFallback = false;
+let hasLoggedModeConfigWarning = false;
+let selectedMode = SSTV_MODES[DEFAULT_MODE];
 
 function resetDecoderState(clearCanvas = true) {
   decodedLines = 0;
@@ -58,6 +75,10 @@ function setStatus(message) {
 
 function getChannelText() {
   return `${sourceChannels} canal${sourceChannels === 1 ? '' : 'es'}`;
+}
+
+function getSelectedMode() {
+  return SSTV_MODES[modeSelect.value] || SSTV_MODES[DEFAULT_MODE];
 }
 
 function clamp(value, min, max) {
@@ -122,9 +143,9 @@ function frequencyToLuma(frequency) {
   return Math.round(clamp(((frequency - 1500) / 800) * 255, 0, 255));
 }
 
-function detectSyncStart() {
+function detectSyncStart(mode) {
   const stepMs = 2;
-  const windowMs = 6;
+  const windowMs = Math.max(6, mode.syncMs);
   const stepSamples = msToSampleIndex(stepMs);
   const windowSamples = Math.max(msToSampleIndex(windowMs), 64);
   const scanUntil = Math.min(pcmData.length - windowSamples, Math.floor(sampleRate * 20));
@@ -141,7 +162,7 @@ function detectSyncStart() {
 
     let score = 0;
     for (let i = 0; i < 8; i += 1) {
-      const checkSec = start / sampleRate + (MARTIN_M1.lineMs / 1000) * i;
+      const checkSec = start / sampleRate + (mode.lineMs / 1000) * i;
       const checkStart = Math.floor(checkSec * sampleRate);
       if (checkStart + windowSamples >= pcmData.length) {
         break;
@@ -163,20 +184,34 @@ function detectSyncStart() {
 }
 
 function decodeLine(lineIndex) {
-  const lineStart = syncStartSec + (lineIndex * MARTIN_M1.lineMs) / 1000;
-  const greenStart = lineStart + (MARTIN_M1.syncMs + MARTIN_M1.porchMs) / 1000;
-  const blueStart = greenStart + (MARTIN_M1.colorMs + MARTIN_M1.separatorMs) / 1000;
-  const redStart = blueStart + (MARTIN_M1.colorMs + MARTIN_M1.separatorMs) / 1000;
+  const lineStart = syncStartSec + (lineIndex * selectedMode.lineMs) / 1000;
+  const channelStarts = {};
+  let channelStart = lineStart + (selectedMode.syncMs + selectedMode.porchMs) / 1000;
+  for (let i = 0; i < selectedMode.componentOrder.length; i += 1) {
+    const component = selectedMode.componentOrder[i];
+    channelStarts[component] = channelStart;
+    channelStart += selectedMode.colorMs / 1000;
+    if (i < selectedMode.componentOrder.length - 1) {
+      channelStart += selectedMode.separatorMs / 1000;
+    }
+  }
+  if (channelStarts.r === undefined || channelStarts.g === undefined || channelStarts.b === undefined) {
+    if (!hasLoggedModeConfigWarning) {
+      console.warn(`Configuración de modo inválida para ${selectedMode.label}: faltan componentes RGB en componentOrder.`);
+      hasLoggedModeConfigWarning = true;
+    }
+    return;
+  }
 
   for (let x = 0; x < WIDTH; x += 1) {
     const pixelOffset = (x + 0.5) / WIDTH;
-    const greenTone = estimateToneAtTime(greenStart + (pixelOffset * MARTIN_M1.colorMs) / 1000);
-    const blueTone = estimateToneAtTime(blueStart + (pixelOffset * MARTIN_M1.colorMs) / 1000);
-    const redTone = estimateToneAtTime(redStart + (pixelOffset * MARTIN_M1.colorMs) / 1000);
+    const gTone = estimateToneAtTime(channelStarts.g + (pixelOffset * selectedMode.colorMs) / 1000);
+    const bTone = estimateToneAtTime(channelStarts.b + (pixelOffset * selectedMode.colorMs) / 1000);
+    const rTone = estimateToneAtTime(channelStarts.r + (pixelOffset * selectedMode.colorMs) / 1000);
 
-    const g = frequencyToLuma(greenTone);
-    const b = frequencyToLuma(blueTone);
-    const r = frequencyToLuma(redTone);
+    const g = frequencyToLuma(gTone);
+    const b = frequencyToLuma(bTone);
+    const r = frequencyToLuma(rTone);
 
     const idx = (lineIndex * WIDTH + x) * 4;
     imageData.data[idx] = r;
@@ -212,7 +247,7 @@ function decodeLoop() {
     elapsedSinceStart = (performance.now() - decodeStartPerfMs) / 1000;
   }
   if (elapsedSinceStart >= 0) {
-    const availableLines = Math.min(HEIGHT, Math.floor((elapsedSinceStart * 1000) / MARTIN_M1.lineMs));
+    const availableLines = Math.min(HEIGHT, Math.floor((elapsedSinceStart * 1000) / selectedMode.lineMs));
     let linesPerFrame = 0;
     while (decodedLines < availableLines && linesPerFrame < 4) {
       decodeLine(decodedLines);
@@ -240,7 +275,8 @@ async function decodeAudioFile(file) {
     sampleRate = decoded.sampleRate;
     sourceChannels = decoded.numberOfChannels;
     pcmData = decoded.getChannelData(0);
-    syncStartSec = detectSyncStart();
+    selectedMode = getSelectedMode();
+    syncStartSec = detectSyncStart(selectedMode);
   } finally {
     await audioContext.close();
   }
@@ -290,7 +326,7 @@ audioInput.addEventListener('change', async (event) => {
           ? ' Se recomienda 44.1 kHz PCM 16-bit para mayor compatibilidad, aunque se admiten otros sample rates.'
           : '';
     setStatus(
-      `Audio cargado (${sampleRate} Hz, ${getChannelText()}, sync=${syncStartSec.toFixed(3)} s). Pulsa Escuchar para iniciar la decodificación.${sampleRateHint}${stereoWarning}`,
+      `Audio cargado (${sampleRate} Hz, ${getChannelText()}, modo=${selectedMode.label}, sync=${syncStartSec.toFixed(3)} s). Pulsa Escuchar para iniciar la decodificación.${sampleRateHint}${stereoWarning}`,
     );
     listenButton.disabled = false;
   } catch (error) {
@@ -308,7 +344,10 @@ listenButton.addEventListener('click', async () => {
   player.currentTime = 0;
   resetDecoderState();
   hasLoggedTimingFallback = false;
-  setStatus(`Reproduciendo y decodificando imagen pixel a pixel... (${sampleRate} Hz, ${getChannelText()}, sync=${syncStartSec.toFixed(3)} s)`);
+  hasLoggedModeConfigWarning = false;
+  setStatus(
+    `Reproduciendo y decodificando imagen pixel a pixel... (${sampleRate} Hz, ${getChannelText()}, modo=${selectedMode.label}, sync=${syncStartSec.toFixed(3)} s)`,
+  );
 
   try {
     await player.play();
@@ -332,8 +371,20 @@ player.addEventListener('pause', () => {
 player.addEventListener('ended', () => {
   decodingActive = false;
   if (decodedLines >= HEIGHT) {
-    setStatus('Reproducción finalizada y decodificación completa.');
+    setStatus(`Reproducción finalizada y decodificación completa (${selectedMode.label}).`);
   }
+});
+
+modeSelect.addEventListener('change', () => {
+  selectedMode = getSelectedMode();
+  hasLoggedModeConfigWarning = false;
+  if (!pcmData) {
+    setStatus(`Modo seleccionado: ${selectedMode.label}. Selecciona un audio para comenzar.`);
+    return;
+  }
+
+  syncStartSec = detectSyncStart(selectedMode);
+  setStatus(`Modo actualizado a ${selectedMode.label}. Sync recalculado: ${syncStartSec.toFixed(3)} s. Pulsa Escuchar.`);
 });
 
 downloadButton.addEventListener('click', () => {
