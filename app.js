@@ -214,14 +214,22 @@ async function decodeAudioFile(file) {
   }
 }
 
-function setPlayerSourceFromFile(file) {
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo de audio.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function setPlayerSourceFromFile(file) {
   if (!file.type.startsWith('audio/')) {
     throw new Error('El archivo seleccionado no es de audio.');
   }
 
-  const nextUrl = URL.createObjectURL(file);
-  if (!nextUrl.startsWith('blob:')) {
-    URL.revokeObjectURL(nextUrl);
+  const nextUrl = await readFileAsDataUrl(file);
+  if (typeof nextUrl !== 'string' || !nextUrl.startsWith('data:audio/')) {
     throw new Error('Se bloqueó una URL de audio inválida.');
   }
 
@@ -235,11 +243,7 @@ audioInput.addEventListener('change', async (event) => {
     return;
   }
 
-  if (audioFileUrl) {
-    URL.revokeObjectURL(audioFileUrl);
-  }
-
-  audioFileUrl = setPlayerSourceFromFile(file);
+  audioFileUrl = await setPlayerSourceFromFile(file);
   listenButton.disabled = true;
   setStatus('Procesando audio y buscando sincronía SSTV...');
   resetDecoderState();
