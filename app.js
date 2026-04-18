@@ -17,9 +17,14 @@ const MARTIN_M1 = {
   colorMs: 146.432,
   separatorMs: 0.572,
 };
+const TONE_MIN_HZ = 1500;
+const TONE_MAX_HZ = 2300;
+const TONE_COARSE_STEP_HZ = 20;
+const TONE_FINE_SPAN_HZ = 20;
+const TONE_FINE_STEP_HZ = 5;
 
 const toneFrequencies = [];
-for (let hz = 1500; hz <= 2300; hz += 50) {
+for (let hz = TONE_MIN_HZ; hz <= TONE_MAX_HZ; hz += TONE_COARSE_STEP_HZ) {
   toneFrequencies.push(hz);
 }
 
@@ -33,6 +38,7 @@ let decodingActive = false;
 let syncStartSec = 0;
 let rafId = 0;
 let decodeStartPerfMs = 0;
+let hasLoggedTimingFallback = false;
 
 function resetDecoderState(clearCanvas = true) {
   decodedLines = 0;
@@ -48,6 +54,10 @@ function resetDecoderState(clearCanvas = true) {
 
 function setStatus(message) {
   statusText.textContent = message;
+}
+
+function getChannelText() {
+  return `${sourceChannels} canal${sourceChannels === 1 ? '' : 'es'}`;
 }
 
 function clamp(value, min, max) {
@@ -95,9 +105,9 @@ function estimateToneAtTime(seconds) {
 
   let refinedFrequency = bestFrequency;
   let refinedEnergy = bestEnergy;
-  const minFrequency = Math.max(1500, bestFrequency - 20);
-  const maxFrequency = Math.min(2300, bestFrequency + 20);
-  for (let frequency = minFrequency; frequency <= maxFrequency; frequency += 5) {
+  const minFrequency = Math.max(TONE_MIN_HZ, bestFrequency - TONE_FINE_SPAN_HZ);
+  const maxFrequency = Math.min(TONE_MAX_HZ, bestFrequency + TONE_FINE_SPAN_HZ);
+  for (let frequency = minFrequency; frequency <= maxFrequency; frequency += TONE_FINE_STEP_HZ) {
     const energy = goertzelMagnitudeSquared(pcmData, start, windowSize, frequency);
     if (energy > refinedEnergy) {
       refinedEnergy = energy;
@@ -193,7 +203,14 @@ function decodeLoop() {
     return;
   }
 
-  const elapsedSinceStart = (performance.now() - decodeStartPerfMs) / 1000;
+  let elapsedSinceStart = player.currentTime - syncStartSec;
+  if (!Number.isFinite(elapsedSinceStart)) {
+    if (!hasLoggedTimingFallback) {
+      console.warn('Tiempo de audio no disponible; usando fallback con performance.now() para la decodificación.');
+      hasLoggedTimingFallback = true;
+    }
+    elapsedSinceStart = (performance.now() - decodeStartPerfMs) / 1000;
+  }
   if (elapsedSinceStart >= 0) {
     const availableLines = Math.min(HEIGHT, Math.floor((elapsedSinceStart * 1000) / MARTIN_M1.lineMs));
     let linesPerFrame = 0;
@@ -266,13 +283,15 @@ audioInput.addEventListener('change', async (event) => {
   try {
     await decodeAudioFile(file);
     const stereoWarning = sourceChannels > 1 ? ' Audio estéreo detectado; se usa solo canal 0.' : '';
-    if (sampleRate !== 44100) {
-      setStatus(
-        `Audio cargado (${sampleRate} Hz, sync=${syncStartSec.toFixed(3)} s). Recomendado: 44100 Hz PCM 16-bit.${stereoWarning}`,
-      );
-    } else {
-      setStatus(`Audio cargado (${sampleRate} Hz, sync=${syncStartSec.toFixed(3)} s). Pulsa Escuchar para iniciar la decodificación.${stereoWarning}`);
-    }
+    const sampleRateHint =
+      sampleRate === 96000
+        ? ' Archivo 96 kHz detectado; debería decodificar correctamente. Si notas artefactos, prueba remuestrear a 44.1 kHz PCM 16-bit.'
+        : sampleRate !== 44100
+          ? ' Se recomienda 44.1 kHz PCM 16-bit para mayor compatibilidad, aunque se admiten otros sample rates.'
+          : '';
+    setStatus(
+      `Audio cargado (${sampleRate} Hz, ${getChannelText()}, sync=${syncStartSec.toFixed(3)} s). Pulsa Escuchar para iniciar la decodificación.${sampleRateHint}${stereoWarning}`,
+    );
     listenButton.disabled = false;
   } catch (error) {
     console.error(error);
@@ -288,7 +307,8 @@ listenButton.addEventListener('click', async () => {
   cancelAnimationFrame(rafId);
   player.currentTime = 0;
   resetDecoderState();
-  setStatus(`Reproduciendo y decodificando imagen pixel a pixel... (${sampleRate} Hz, sync=${syncStartSec.toFixed(3)} s)`);
+  hasLoggedTimingFallback = false;
+  setStatus(`Reproduciendo y decodificando imagen pixel a pixel... (${sampleRate} Hz, ${getChannelText()}, sync=${syncStartSec.toFixed(3)} s)`);
 
   try {
     await player.play();
