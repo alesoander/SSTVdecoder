@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SSTV Decoder</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <h1>Decodificador SSTV</h1>
+      <p class="subtitle">
+        Carga audio SSTV (idealmente WAV PCM 44.1 kHz, 16-bit), pulsa <strong>Escuchar</strong> y observa la imagen renderizada durante la reproducción.
+      </p>
+
+      <section class="controls">
+        <label for="audioInput">Audio SSTV</label>
+        <input id="audioInput" type="file" accept="audio/*,.wav" />
+
+        <div class="buttons">
+          <button id="listenButton" disabled>Escuchar</button>
+          <button id="downloadButton" disabled>Descargar imagen</button>
+        </div>
+
+        <audio id="player" controls></audio>
+        <p id="status" class="status">Selecciona un audio para comenzar.</p>
+
+        <label for="progress">Progreso de decodificación</label>
+        <progress id="progress" value="0" max="100"></progress>
+        <p id="progressText" class="progress-text">0%</p>
+      </section>
+
+      <section class="canvas-wrapper">
+        <canvas id="sstvCanvas" width="320" height="256"></canvas>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
