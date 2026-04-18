@@ -54,6 +54,7 @@ let syncStartSec = 0;
 let rafId = 0;
 let decodeStartPerfMs = 0;
 let hasLoggedTimingFallback = false;
+let hasLoggedModeConfigWarning = false;
 let selectedMode = SSTV_MODES[DEFAULT_MODE];
 
 function resetDecoderState(clearCanvas = true) {
@@ -194,17 +195,23 @@ function decodeLine(lineIndex) {
       channelStart += selectedMode.separatorMs / 1000;
     }
   }
+  if (channelStarts.r === undefined || channelStarts.g === undefined || channelStarts.b === undefined) {
+    if (!hasLoggedModeConfigWarning) {
+      console.warn(`Configuración de modo inválida para ${selectedMode.label}: faltan componentes RGB en componentOrder.`);
+      hasLoggedModeConfigWarning = true;
+    }
+    return;
+  }
 
   for (let x = 0; x < WIDTH; x += 1) {
     const pixelOffset = (x + 0.5) / WIDTH;
-    const tones = {};
-    for (const component of selectedMode.componentOrder) {
-      tones[component] = estimateToneAtTime(channelStarts[component] + (pixelOffset * selectedMode.colorMs) / 1000);
-    }
+    const gTone = estimateToneAtTime(channelStarts.g + (pixelOffset * selectedMode.colorMs) / 1000);
+    const bTone = estimateToneAtTime(channelStarts.b + (pixelOffset * selectedMode.colorMs) / 1000);
+    const rTone = estimateToneAtTime(channelStarts.r + (pixelOffset * selectedMode.colorMs) / 1000);
 
-    const g = frequencyToLuma(tones.g ?? TONE_MIN_HZ);
-    const b = frequencyToLuma(tones.b ?? TONE_MIN_HZ);
-    const r = frequencyToLuma(tones.r ?? TONE_MIN_HZ);
+    const g = frequencyToLuma(gTone);
+    const b = frequencyToLuma(bTone);
+    const r = frequencyToLuma(rTone);
 
     const idx = (lineIndex * WIDTH + x) * 4;
     imageData.data[idx] = r;
@@ -337,6 +344,7 @@ listenButton.addEventListener('click', async () => {
   player.currentTime = 0;
   resetDecoderState();
   hasLoggedTimingFallback = false;
+  hasLoggedModeConfigWarning = false;
   setStatus(
     `Reproduciendo y decodificando imagen pixel a pixel... (${sampleRate} Hz, ${getChannelText()}, modo=${selectedMode.label}, sync=${syncStartSec.toFixed(3)} s)`,
   );
@@ -369,6 +377,7 @@ player.addEventListener('ended', () => {
 
 modeSelect.addEventListener('change', () => {
   selectedMode = getSelectedMode();
+  hasLoggedModeConfigWarning = false;
   if (!pcmData) {
     setStatus(`Modo seleccionado: ${selectedMode.label}. Selecciona un audio para comenzar.`);
     return;
