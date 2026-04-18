@@ -5,7 +5,7 @@ Decodificador SSTV web (Martin M1) pensado para publicarse en GitHub Pages.
 ## Uso
 
 1. Abre el sitio web.
-2. Selecciona un archivo de audio SSTV (idealmente WAV PCM 44.1 kHz / 16-bit).
+2. Selecciona un archivo de audio SSTV (WAV PCM 16-bit recomendado; 44.1 kHz es la opción recomendada, pero el decoder también soporta otros sample rates como 96 kHz).
 3. Pulsa **Escuchar** para iniciar reproducción + decodificación.
 4. Observa el progreso de renderizado de la imagen en el canvas.
 5. Pulsa **Descargar imagen** cuando termine.
