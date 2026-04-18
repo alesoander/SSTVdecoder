@@ -77,7 +77,8 @@ function estimateToneAtTime(seconds) {
   const center = Math.floor(seconds * sampleRate);
   const windowSize = Math.max(64, Math.floor(sampleRate * 0.0015));
   const halfWindow = Math.floor(windowSize / 2);
-  const start = clamp(center - halfWindow, 0, Math.max(0, pcmData.length - windowSize - 1));
+  const maxStart = Math.max(0, pcmData.length - windowSize);
+  const start = clamp(center - halfWindow, 0, maxStart);
 
   let bestFrequency = toneFrequencies[0];
   let bestEnergy = -Infinity;
@@ -213,6 +214,22 @@ async function decodeAudioFile(file) {
   }
 }
 
+function setPlayerSourceFromFile(file) {
+  if (!file.type.startsWith('audio/')) {
+    throw new Error('El archivo seleccionado no es de audio.');
+  }
+
+  const nextUrl = URL.createObjectURL(file);
+  const parsedUrl = new URL(nextUrl, window.location.href);
+  if (parsedUrl.protocol !== 'blob:') {
+    URL.revokeObjectURL(nextUrl);
+    throw new Error('Se bloqueó una URL de audio inválida.');
+  }
+
+  player.src = parsedUrl.toString();
+  return nextUrl;
+}
+
 audioInput.addEventListener('change', async (event) => {
   const [file] = event.target.files;
   if (!file) {
@@ -223,8 +240,7 @@ audioInput.addEventListener('change', async (event) => {
     URL.revokeObjectURL(audioFileUrl);
   }
 
-  audioFileUrl = URL.createObjectURL(file);
-  player.src = audioFileUrl;
+  audioFileUrl = setPlayerSourceFromFile(file);
   listenButton.disabled = true;
   setStatus('Procesando audio y buscando sincronía SSTV...');
   resetDecoderState();
@@ -279,8 +295,9 @@ player.addEventListener('ended', () => {
 });
 
 downloadButton.addEventListener('click', () => {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const link = document.createElement('a');
-  link.download = `sstv-${Date.now()}.png`;
+  link.download = `sstv-${timestamp}.png`;
   link.href = canvas.toDataURL('image/png');
   link.click();
 });
