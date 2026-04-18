@@ -38,6 +38,7 @@ let decodingActive = false;
 let syncStartSec = 0;
 let rafId = 0;
 let decodeStartPerfMs = 0;
+let hasLoggedTimingFallback = false;
 
 function resetDecoderState(clearCanvas = true) {
   decodedLines = 0;
@@ -204,6 +205,10 @@ function decodeLoop() {
 
   let elapsedSinceStart = player.currentTime - syncStartSec;
   if (!Number.isFinite(elapsedSinceStart)) {
+    if (!hasLoggedTimingFallback) {
+      console.warn('Tiempo de audio no disponible; usando fallback con performance.now() para la decodificación.');
+      hasLoggedTimingFallback = true;
+    }
     elapsedSinceStart = (performance.now() - decodeStartPerfMs) / 1000;
   }
   if (elapsedSinceStart >= 0) {
@@ -302,6 +307,7 @@ listenButton.addEventListener('click', async () => {
   cancelAnimationFrame(rafId);
   player.currentTime = 0;
   resetDecoderState();
+  hasLoggedTimingFallback = false;
   setStatus(`Reproduciendo y decodificando imagen pixel a pixel... (${sampleRate} Hz, ${getChannelText()}, sync=${syncStartSec.toFixed(3)} s)`);
 
   try {
