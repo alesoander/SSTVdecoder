@@ -26,11 +26,13 @@ for (let hz = 1500; hz <= 2300; hz += 50) {
 let audioFileUrl = null;
 let pcmData = null;
 let sampleRate = 0;
+let sourceChannels = 0;
 let imageData = ctx.createImageData(WIDTH, HEIGHT);
 let decodedLines = 0;
 let decodingActive = false;
 let syncStartSec = 0;
 let rafId = 0;
+let decodeStartPerfMs = 0;
 
 function resetDecoderState(clearCanvas = true) {
   decodedLines = 0;
@@ -91,7 +93,19 @@ function estimateToneAtTime(seconds) {
     }
   }
 
-  return bestFrequency;
+  let refinedFrequency = bestFrequency;
+  let refinedEnergy = bestEnergy;
+  const minFrequency = Math.max(1500, bestFrequency - 20);
+  const maxFrequency = Math.min(2300, bestFrequency + 20);
+  for (let frequency = minFrequency; frequency <= maxFrequency; frequency += 5) {
+    const energy = goertzelMagnitudeSquared(pcmData, start, windowSize, frequency);
+    if (energy > refinedEnergy) {
+      refinedEnergy = energy;
+      refinedFrequency = frequency;
+    }
+  }
+
+  return refinedFrequency;
 }
 
 function frequencyToLuma(frequency) {
@@ -179,9 +193,9 @@ function decodeLoop() {
     return;
   }
 
-  const elapsed = player.currentTime - syncStartSec;
-  if (elapsed >= 0) {
-    const availableLines = Math.min(HEIGHT, Math.floor((elapsed * 1000) / MARTIN_M1.lineMs));
+  const elapsedSinceStart = (performance.now() - decodeStartPerfMs) / 1000;
+  if (elapsedSinceStart >= 0) {
+    const availableLines = Math.min(HEIGHT, Math.floor((elapsedSinceStart * 1000) / MARTIN_M1.lineMs));
     let linesPerFrame = 0;
     while (decodedLines < availableLines && linesPerFrame < 4) {
       decodeLine(decodedLines);
@@ -207,6 +221,7 @@ async function decodeAudioFile(file) {
   try {
     const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0));
     sampleRate = decoded.sampleRate;
+    sourceChannels = decoded.numberOfChannels;
     pcmData = decoded.getChannelData(0);
     syncStartSec = detectSyncStart();
   } finally {
@@ -250,10 +265,13 @@ audioInput.addEventListener('change', async (event) => {
 
   try {
     await decodeAudioFile(file);
+    const stereoWarning = sourceChannels > 1 ? ' Audio estéreo detectado; se usa solo canal 0.' : '';
     if (sampleRate !== 44100) {
-      setStatus(`Audio cargado (${sampleRate} Hz). Recomendado: 44100 Hz PCM 16-bit.`);
+      setStatus(
+        `Audio cargado (${sampleRate} Hz, sync=${syncStartSec.toFixed(3)} s). Recomendado: 44100 Hz PCM 16-bit.${stereoWarning}`,
+      );
     } else {
-      setStatus('Audio cargado. Pulsa Escuchar para iniciar la decodificación.');
+      setStatus(`Audio cargado (${sampleRate} Hz, sync=${syncStartSec.toFixed(3)} s). Pulsa Escuchar para iniciar la decodificación.${stereoWarning}`);
     }
     listenButton.disabled = false;
   } catch (error) {
@@ -270,7 +288,7 @@ listenButton.addEventListener('click', async () => {
   cancelAnimationFrame(rafId);
   player.currentTime = 0;
   resetDecoderState();
-  setStatus('Reproduciendo y decodificando imagen pixel a pixel...');
+  setStatus(`Reproduciendo y decodificando imagen pixel a pixel... (${sampleRate} Hz, sync=${syncStartSec.toFixed(3)} s)`);
 
   try {
     await player.play();
@@ -280,6 +298,7 @@ listenButton.addEventListener('click', async () => {
     return;
   }
 
+  decodeStartPerfMs = performance.now();
   decodingActive = true;
   decodeLoop();
 });
