@@ -200,7 +200,7 @@ function decodeLoop() {
 
   let elapsedSinceStart = player.currentTime - syncStartSec;
   if (!Number.isFinite(elapsedSinceStart)) {
-    elapsedSinceStart = (performance.now() - decodeStartPerfMs) / 1000 - syncStartSec;
+    elapsedSinceStart = (performance.now() - decodeStartPerfMs) / 1000;
   }
   if (elapsedSinceStart >= 0) {
     const availableLines = Math.min(HEIGHT, Math.floor((elapsedSinceStart * 1000) / MARTIN_M1.lineMs));
